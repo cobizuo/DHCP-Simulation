@@ -6,7 +6,7 @@ class DHCPServer:
     # offers = dictionary containing IPs being offered and waiting for response
     # leases = dictionary containig IPs that are being actively leased
     # lease_time = legnth of time each lease will last (minutes)
-    def __init__(self, pool, lease_time= 60):
+    def __init__(self, pool, lease_time=60):
         self.pool = pool
         self.offers = {}
         self.leases = {}
@@ -45,3 +45,12 @@ class DHCPServer:
             del self.leases[client_id]
             self.pool.append(ip)
             print(f"Server: Released {ip} from client {client_id} back to the IP pool.")
+
+server = DHCPServer(pool=["192.0.0.0", "192.0.0.1", "192.0.0.2"], lease_time=25)
+temp_client_id = "AA:BB:CC:DD:EE:FF"
+
+offered_ip = server.process_discover(temp_client_id)
+if offered_ip:
+    success = server.process_request(temp_client_id, offered_ip)
+    if success:
+        print(f"Server; IP Successfully secured for {temp_client_id} on ip {offered_ip}")
