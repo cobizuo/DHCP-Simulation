@@ -12,24 +12,45 @@ class DHCPServer:
         self.mask = mask
         self.lease_time = lease_time
 
-        self.free_ips = populate_ips(network, mask)
+        self.free_ips = self.populate_ips()
         self.pending_offers = {}
         self.leases = {}
 
         print("DHCP Server initialized for:", network, " mask:", mask)
     
+    
+    
+    def populate_ips(self):
 
-    def populate_ips(self, network, mask):
+        def ip_generation(nat, mask):
+            ip_pool = []
+            mask_ascii = ord(mask)
+            while (mask_ascii < 68):
+                for value in range(1, 255):
+                    current = nat + "." + str(value)
+                    ip_pool.append(current)
+
+                mask_ascii += 1
+            return ip_pool
+
         network_mask = self.mask.split('.')
-        mask_type
-        if network_mask[2] != 0:
+        if int(network_mask[1]) != 0:
             mask_type = "A"
-            network_ip = str(network_mask[0])
+            network_nat = str(network_mask[0])
+            return ip_generation(network_nat, mask_type)
 
-        elif network_mask[1] != 0:
+        elif int(network_mask[2]) != 0:
             mask_type = "B"
+            network_nat = str(network_mask[0]) + "." + str(network_mask[1])
+            return ip_generation(network_nat, mask_type)
         else:
             mask_type = "C"
+            network_nat = str(network_mask[0]) + "." + str(network_mask[1]) + "." + str(network_mask[2])
+            return ip_generation(network_nat, mask_type)
+        
+    
+                    
+
 
     
 
