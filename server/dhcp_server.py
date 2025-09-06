@@ -49,10 +49,12 @@ class DHCPServer:
         list_of_ips = []
         total_hosts = 2**host_bits
 
-        for i in range(1, total_hosts - 1) #skips the .0 and .255 broadcast and network ips
+        for i in range(1, total_hosts - 1): #skips the .0 and .255 broadcast and network ips
             host_binary = format(i, f'0{host_bits}b')  # padded to host_bits
             full_binary = network_address_binary[:subnet_allocated_bits] + host_binary
-            list_of_ips.append(binary_to_ipv4(full_binary))                    
+            list_of_ips.append(binary_to_ipv4(full_binary))
+
+        return list_of_ips                   
 
 
     
@@ -68,7 +70,7 @@ class DHCPServer:
 #Testing
 
 if __name__ == "__main__":
-    server = DHCPServer(ip="192.168.1.0", mask = "255.255.255.0")
-    server.run
+    server = DHCPServer(ip="192.168.1.0", CIDR = "/24")
+    server.run()
 
-    server.print
+    server.print()
