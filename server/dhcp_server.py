@@ -20,34 +20,10 @@ class DHCPServer:
         self.free_ips = self.populate_ips()
         self.pending_offers = {}
         self.leases = {}
+        self.mac_logs = {}
 
         print("DHCP Server initialized for:", ip, " mask:", cidr)
     
-    
-    def get_random_ip(self):
-        if not self.free_ips:
-            return None
-        ip = random.choice(self.free_ips)
-        self.free_ips.remove(ip)
-        return ip
-
-    def handle_discover(self, client_mac):
-        ip = self.get_random_ip()
-        self.pending_offers[client_mac] = ip
-    
-    # def handle_offer(self, client_mac):
-    
-    def handle_request(self, requested_ip, client_mac):
-        if not (client_mac in self.pending_offers and self.pending_offers[client_mac] == requested_ip):
-            return None
-        
-        
-
-        
-
-
-
-
     def populate_ips(self):
 
         def ipv4_to_binary(ip):
@@ -81,10 +57,69 @@ class DHCPServer:
             full_binary = network_address_binary[:subnet_allocated_bits] + host_binary
             list_of_ips.append(binary_to_ipv4(full_binary))
 
-        return list_of_ips             
+        return list_of_ips
+    
 
+    def get_random_ip(self):
+        #handles checking if a free ip is available to be offered
+        if not self.free_ips:
+            return None
+        ip = random.choice(self.free_ips)
+        #removes ip from the free_ips list
+        self.free_ips.remove(ip)
+        return ip
+    
+
+    def handle_discover(self, client_mac):
+        ip = self.get_random_ip()
+        if ip is None:
+            return None
+        
+        #keeps a master log of all the mac_address that interact with the server
+        if client_mac not in self.mac_logs:
+            self.mac_logs[client_mac] = 0
+        
+        
+        self.pending_offers[client_mac] = (ip, time.time()) #tracks which ips are pending offers and logs their time of request (ToR)
+        return f"OFFER: <{client_mac}>, <{ip}>"
 
     
+    # def handle_offer(self, client_mac):
+    def handle_request(self, requested_ip, client_mac):
+        if not (client_mac in self.pending_offers and self.pending_offers[client_mac] == requested_ip):
+            return self.handle_nak(client_mac)
+        
+        if client_mac in self.leases and self.leases[client_mac][0] == requested_ip:
+            #renews the already existing lease for the client mac
+            self.leases[client_mac][1] += 60
+            return f"RENEW: <{client_mac}> renewed IP <{requested_ip}> for a new lease"
+        #logs the ip being leased in format to self.leases
+        #   {mac: ip, ToR + 60 to indicate how long the lease lasts}
+        lease_time = 60 + self.pending_offers[client_mac][1]
+        self.leases[client_mac] = (requested_ip, lease_time)
+        del self.pending_offers[client_mac]
+        return f"ACK: <{client_mac}> requested offered IP <{requested_ip}>, <{lease_time}>"
+
+
+    def handle_nak(self, client_mac):
+        #attempts to rediscover a new ip address for the client up to 3 times
+        while client_mac in self.mac_logs and self.mac_logs[client_mac] < 3:
+            self.mac_logs[client_mac] += 1
+            discover_result = self.handle_discover(client_mac)
+            if discover_result is None:
+                continue
+        
+        del self.mac_logs[client_mac]
+        return f"NAK: Attempted rediscover and failed to allocate IP for <{client_mac}>"
+    
+    def handle_release(self, client_mac):
+        if client_mac not in self.leases:
+            return None
+        ip = self.leases[client_mac][0]
+        self.free_ips.append(ip)
+        del self.leases[client_mac]
+        return f"RELEASE: <{client_mac}> released IP <{ip}>"
+
     def run(self):
         print("Server started")
 
