@@ -1,3 +1,4 @@
+import re
 import time
 import random
 import threading
@@ -169,9 +170,67 @@ class DHCPServer:
 #Testing
 
 if __name__ == "__main__":
-    server = DHCPServer(ip="192.168.1.0", cidr = "/24")
-    server.run()
-
     server = DHCPServer(ip="192.168.1.0", cidr = "/23")
     server.run()
-    server.debug_print()
+
+    # Testing different ip discover and ip request attempts for differnet MAC Addresses
+    #All test either are fully correct or only 1 variable wrong
+    # Testing a correct call
+    # - > Expected ACK Message
+    # Testing a mismatched mac
+    # - > Expected NAK Message
+    # Testing a mismatched ip request
+    # - > Expected NAK Message
+    # Testing a Deny response
+    # - > Expected NAK Message
+
+    #All expected
+    response_1 = server.handle_discover('ABCD')
+    discover_return_values = re.findall(r"<(.*?)>", response_1)
+    print(response_1)
+    print(server.handle_request(True, discover_return_values[1], 'ABCD'))
+
+    #MAC Address mismatch
+    response_2 = server.handle_discover('EFGH')
+    discover_return_values = re.findall(r"<(.*?)>", response_2)
+    print(response_2)
+    print(server.handle_request(True, discover_return_values[1], 'EFGZ'))
+
+    #Requested IP Mismatch
+    response_3 = server.handle_discover('IJKL')
+    discover_return_values = re.findall(r"<(.*?)>", response_3)
+    print(response_3)
+    print(server.handle_request(True, '12.96.122.241', 'IJKL'))
+
+    #Deny request attempt
+    response_4 = server.handle_discover('MNOP')
+    discover_return_values = re.findall(r"<(.*?)>", response_4)
+    print(response_4)
+    print(server.handle_request(False, discover_return_values[1], 'MNOP'))
+
+    
+    #Testing multipled variables incorrect
+    #Missing client_response
+    response_5 = server.handle_discover('ABCDE')
+    discover_return_values = re.findall(r"<(.*?)>", response_5)
+    print(response_5)
+    print(server.handle_request(discover_return_values[1], 'ABCDE'))
+
+    #MAC Address mismatch
+    #Requested IP Mismatch
+    response_6 = server.handle_discover('EFGHI')
+    discover_return_values = re.findall(r"<(.*?)>", response_6)
+    print(response_6)
+    print(server.handle_request(True, discover_return_values[1], 'EFGHZ'))
+
+    #Missing MAC Address
+    response_7 = server.handle_discover('IJKLM')
+    discover_return_values = re.findall(r"<(.*?)>", response_7)
+    print(response_7)
+    print(server.handle_request(True, '12.96.122.241', 'IJKLM'))
+
+    #Missing Requested IP 
+    response_8 = server.handle_discover('MNOPQ')
+    discover_return_values = re.findall(r"<(.*?)>", response_8)
+    print(response_8)
+    print(server.handle_request(False, discover_return_values[1], 'MNOPQ'))
