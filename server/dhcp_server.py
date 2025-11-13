@@ -2,12 +2,12 @@ import re
 import time
 import random
 import threading
-import socket
+from socket import *
 
-
+# Implement catch for current pending offers
 class DHCPServer:
     
-    def __init__(self, ip, cidr, base_lease_time=60):
+    def __init__(self, ip, cidr, base_lease_time=60, listening_port = 1067):
         
         #Input examples:
         #network = String: "192.10.54.244"
@@ -24,6 +24,11 @@ class DHCPServer:
         
         #structure -> client_mac: 0 (interaction counter)
         self.mac_logs = {}                  #{mac: int}
+
+
+        self.listening_port = listening_port
+        self.server_socket = None
+        self.server_running = False
 
         print("DHCP Server initialized for:", ip, " CIDR:", cidr)
     
@@ -151,6 +156,8 @@ class DHCPServer:
         
     #     del self.mac_logs[client_mac]
     #     return f"NAK: Attempted rediscover and failed to allocate IP for <{client_mac}>"
+
+    # def _clean_up(self):
     
     def handle_release(self, client_mac):
         if client_mac not in self.leases:
@@ -161,7 +168,70 @@ class DHCPServer:
         return f"RELEASE: <{client_mac}> released IP <{ip}>"
 
     def run(self):
-        print("Server started")
+        print("Running")
+        # HOST = '127.0.0.1'
+        # #Defining the socket for communication
+        # try:
+        #     self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        #     print("Server socket started")
+        # except socket.error:
+        #     print("ERROR: Server socket failed to start")
+
+        # #Connecting the socket to the host ip and port
+        # try:
+        #     self.server_socket.bind(HOST, self.listening_port)
+        #     self.server_socket.settimeout(1.0)
+        #     self.server_running = True
+        #     print(f"Server binding to <{HOST}> IP on Port <{self.listening_port}>")
+        # except socket.error: 
+        #     print("Server failed to bind socket")
+
+        # try:
+        #     while self.server_running:
+        #         try:
+        #             data, addr = self.server_socket.recvfrom(1024)
+        #         except socket.timeout:
+        #             continue
+            
+        #         if not data:
+        #             continue
+        #         #Request = handle_request
+        #         #Discover = handle_discover
+        #         #Release = handle_release
+        #         # I want to discover a new ip
+        #         # DISCOVER: <client_mac>
+
+        #         client_message = data.decode('utf-8').strip()
+        #         parsed_message = client_message.split(',')
+
+        #         #Grabbing the request type
+        #         message_type = parsed_message[0] if parsed_message else ""
+        #         parsed_mac = parsed_message[1] if len(parsed_message) > 1 else None
+
+        #         reponse_message = None
+
+        #         if message_type and parsed_mac:
+        #             match message_type:
+        #                 case "DISCOVER":
+        #                     reponse_message = self.handle_discover(parsed_mac)
+        #                 case "REQUEST":
+        #                     parsed_response = parsed_message[2] if len(parsed_message > 2) else None
+        #                     parsed_ip = parsed_message[3] if len(parsed_message > 3) else None
+        #                     if parsed_response:
+        #                         reponse_message = self.handle_request(parsed_response, parsed_mac, parsed_ip, parsed_mac)
+        #                 case "RELEASE":
+        #                     response_message = self.handle_release(parsed_mac)
+        #                 case _"
+                    
+
+
+
+        # except Exception as e:
+        #     print("[DHCP Server] Error in server loop")
+
+
+        # try:
+
 
     def debug_print(self):
         print(self.free_ips)
@@ -214,7 +284,7 @@ if __name__ == "__main__":
     response_5 = server.handle_discover('ABCDE')
     discover_return_values = re.findall(r"<(.*?)>", response_5)
     print(response_5)
-    print(server.handle_request(discover_return_values[1], 'ABCDE'))
+    print(server.handle_request(None, discover_return_values[1], 'ABCDE'))
 
     #MAC Address mismatch
     #Requested IP Mismatch
