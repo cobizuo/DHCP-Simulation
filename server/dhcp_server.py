@@ -2,7 +2,7 @@ import re
 import time
 import random
 import threading
-from socket import *
+import socket
 
 # Implement catch for current pending offers
 class DHCPServer:
@@ -168,69 +168,68 @@ class DHCPServer:
         return f"RELEASE: <{client_mac}> released IP <{ip}>"
 
     def run(self):
-        print("Running")
-        # HOST = '127.0.0.1'
-        # #Defining the socket for communication
-        # try:
-        #     self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        #     print("Server socket started")
-        # except socket.error:
-        #     print("ERROR: Server socket failed to start")
+        HOST = '127.0.0.1'
+        #Defining the socket for communication
+        try:
+            self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            print("Server socket started")
+        except socket.error:
+            print("ERROR: Server socket failed to start")
 
-        # #Connecting the socket to the host ip and port
-        # try:
-        #     self.server_socket.bind(HOST, self.listening_port)
-        #     self.server_socket.settimeout(1.0)
-        #     self.server_running = True
-        #     print(f"Server binding to <{HOST}> IP on Port <{self.listening_port}>")
-        # except socket.error: 
-        #     print("Server failed to bind socket")
+        #Connecting the socket to the host ip and port
+        try:
+            self.server_socket.bind(HOST, self.listening_port)
+            self.server_socket.settimeout(1.0)
+            self.server_running = True
+            print(f"Server binding to <{HOST}> IP on Port <{self.listening_port}>")
+        except socket.error: 
+            print("Server failed to bind socket")
 
-        # try:
-        #     while self.server_running:
-        #         try:
-        #             data, addr = self.server_socket.recvfrom(1024)
-        #         except socket.timeout:
-        #             continue
+        try:
+            while self.server_running:
+                try:
+                    data, addr = self.server_socket.recvfrom(1024)
+                except socket.timeout:
+                    continue
             
-        #         if not data:
-        #             continue
-        #         #Request = handle_request
-        #         #Discover = handle_discover
-        #         #Release = handle_release
-        #         # I want to discover a new ip
-        #         # DISCOVER: <client_mac>
+                if not data:
+                    continue
+        
+                client_message = data.decode('utf-8').strip()
+                parsed_message = client_message.split(',')
 
-        #         client_message = data.decode('utf-8').strip()
-        #         parsed_message = client_message.split(',')
+                #Grabbing the request type
+                message_type = parsed_message[0] if parsed_message else ""
+                parsed_mac = parsed_message[1] if len(parsed_message) > 1 else None
 
-        #         #Grabbing the request type
-        #         message_type = parsed_message[0] if parsed_message else ""
-        #         parsed_mac = parsed_message[1] if len(parsed_message) > 1 else None
+                response_message = None
 
-        #         reponse_message = None
+                if message_type and parsed_mac:
+                    match message_type:
+                        case "DISCOVER":
+                            response_message = self.handle_discover(parsed_mac)
+                        case "REQUEST":
+                            parsed_response = parsed_message[2] if len(parsed_message > 2) else None
+                            parsed_ip = parsed_message[3] if len(parsed_message > 3) else None
+                            if parsed_response:
+                                response_message = self.handle_request(parsed_response, parsed_ip, parsed_mac)
+                        case "RELEASE":
+                            parsed_ip = parsed_message[2] if len(parsed_message > 2) else None
+                            response_message = self.handle_release(parsed_mac)
 
-        #         if message_type and parsed_mac:
-        #             match message_type:
-        #                 case "DISCOVER":
-        #                     reponse_message = self.handle_discover(parsed_mac)
-        #                 case "REQUEST":
-        #                     parsed_response = parsed_message[2] if len(parsed_message > 2) else None
-        #                     parsed_ip = parsed_message[3] if len(parsed_message > 3) else None
-        #                     if parsed_response:
-        #                         reponse_message = self.handle_request(parsed_response, parsed_mac, parsed_ip, parsed_mac)
-        #                 case "RELEASE":
-        #                     response_message = self.handle_release(parsed_mac)
-        #                 case _"
-                    
+                        case _:
+                            print(f'[DHCP Server]: Unrecognized message <{client_message}>')
 
+                if response_message:
+                    self.server_socket.sendto(response_message.encode('utf-8'), addr)
+                    print(f"[DHCPServer] Sent response to <{addr}>: {response_message}")
 
+        except Exception as e:
+            print("[DHCP Server] Error in server loop")
 
-        # except Exception as e:
-        #     print("[DHCP Server] Error in server loop")
-
-
-        # try:
+        finally:
+            self.server_socket.close()
+            print("[DHCP Server] Server shutdown.")
 
 
     def debug_print(self):
