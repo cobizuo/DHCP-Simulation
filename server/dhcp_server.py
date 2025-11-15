@@ -25,7 +25,7 @@ class DHCPServer:
         #structure -> client_mac: 0 (interaction counter)
         self.mac_logs = {}                  #{mac: int}
 
-
+        self.host_ip = '127.0.0.1'
         self.listening_port = listening_port
         self.server_socket = None
         self.server_running = False
@@ -168,7 +168,7 @@ class DHCPServer:
         return f"RELEASE: <{client_mac}> released IP <{ip}>"
 
     def run(self):
-        HOST = '127.0.0.1'
+        
         #Defining the socket for communication
         try:
             self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -178,10 +178,10 @@ class DHCPServer:
 
         #Connecting the socket to the host ip and port
         try:
-            self.server_socket.bind(HOST, self.listening_port)
+            self.server_socket.bind(self.host_ip, self.listening_port)
             self.server_socket.settimeout(1.0)
             self.server_running = True
-            print(f"Server binding to <{HOST}> IP on Port <{self.listening_port}>")
+            print(f"Server binding to <{self.host_ip}> IP on Port <{self.listening_port}>")
         except socket.error: 
             print("Server failed to bind socket")
 
@@ -225,7 +225,7 @@ class DHCPServer:
                     print(f"[DHCPServer] Sent response to <{addr}>: {response_message}")
 
         except Exception as e:
-            print("[DHCP Server] Error in server loop")
+            print("[DHCP Server] Error in server loop", e)
 
         finally:
             self.server_socket.close()
@@ -234,11 +234,83 @@ class DHCPServer:
 
     def debug_print(self):
         print(self.free_ips)
+
+
     
 
 #Testing
 
 if __name__ == "__main__":
+
+    def simulate_client(server_ip, server_port, client_mac):
+        print("Running simulation")
+        client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        client_socket.timeout(2.0)
+
+        discover_msg = f"DISCOVER, {client_mac}"
+        client_socket.sendto(discover_msg.encode('utf-8'), (server_ip, server_port))
+        print("Discover sent")
+
+        try:
+            data, addr = client_socket.recvfrom(1024)
+        except socket.timeout:
+            print(f"[Client {client_mac}] !! No response to DISCOVER (timeout)")
+            client_socket.close()
+            return
+        
+        returned_data = data.decode('utf-8').strip()
+        offer_message = re.findall(r"<(.*?)>", returned_data)
+
+        print(f"[Client {client_mac}] <- Received: {returned_data}")
+
+        if not offer_message.startswith("OFFER"):
+            print("Unexpected return message")
+            client_socket.close()
+            return
+        
+        offered_ip = offer_message[1]
+
+        if offered_ip:
+            request_message = f"REQUEST, {client_mac}, {True}, {offered_ip}"
+            client_socket.sendto(request_message.encode('utf-8'))
+            print("Request sent")
+
+            try:
+                data, addr = client_socket.recvfrom(1024)
+            except socket.timeout:
+                print(f"[Client {client_mac}] !! No response to REQUEST (timeout)")
+                client_socket.close()
+                return
+            
+            response_message = data.decode('utf-8').strip()
+            print(f"[Client {client_mac}] <- Received: {response_message}")
+
+            if response_message.startswith("ACK"):
+                parts = re.findall(r"<(.*?)>", response_message)
+                leased_ip = parts[1] if len(parts) > 2 else offered_ip
+                print(f"[Client {client_mac}] ** Lease acquired: IP {leased_ip} **")
+            elif response_message.startswith("NAK"):
+                print(f"[Client {client_mac}] ** Request denied by server:{response_message} **") 
+
+        client_socket.close()
+
+
+    simulate_server = DHCPServer(ip="84.227.53.129", cidr="/18", base_lease_time=30)
+    sServer_thread = threading.Thread(target=simulate_server.run, daemon=True)
+    sServer_thread.start()
+    time.sleep(0.2)
+
+    simulate_client("127.0.0.1", 1067, "AA:BB:CC:DD:01")
+    simulate_server.running = False
+
+    try:
+        end_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        end_sock.sendto(b"", ("127.0.0.1", 1067))
+        end_sock.close()
+    except:
+        pass
+    sServer_thread.join()
+    print("Test complete")
     server = DHCPServer(ip="192.168.1.0", cidr = "/23")
     server.run()
 
