@@ -164,7 +164,15 @@ class DHCPServer:
             return None
         ip = self.leases[client_mac]['ip']
         self.free_ips.append(ip)
-        del self.leases[client_mac]
+
+        has_lease = self.leases[client_mac]
+        if has_lease:
+            del self.leases[client_mac]
+
+        has_logs = self.mac_logs[client_mac]
+        if has_logs:
+            del self.mac_logs[client_mac]
+
         return f"RELEASE: <{client_mac}> released IP <{ip}>"
 
     def run(self):
@@ -350,6 +358,7 @@ if __name__ == "__main__":
     print(server.handle_request(False, discover_return_values[1], 'MNOP'))
 
     
+    print("\nMulti-Variable failure tests\n")
     #Testing multipled variables incorrect
     #Missing client_response
     response_5 = server.handle_discover('ABCDE')
@@ -362,16 +371,43 @@ if __name__ == "__main__":
     response_6 = server.handle_discover('EFGHI')
     discover_return_values = re.findall(r"<(.*?)>", response_6)
     print(response_6)
-    print(server.handle_request(True, discover_return_values[1], 'EFGHZ'))
+    print(server.handle_request(True, '12.96.122.241', 'EFGHZ'))
 
     #Missing MAC Address
     response_7 = server.handle_discover('IJKLM')
     discover_return_values = re.findall(r"<(.*?)>", response_7)
     print(response_7)
-    print(server.handle_request(True, '12.96.122.241', 'IJKLM'))
+    print(server.handle_request(True, '12.96.122.231', 'IJKLM'))
 
     #Missing Requested IP 
     response_8 = server.handle_discover('MNOPQ')
     discover_return_values = re.findall(r"<(.*?)>", response_8)
     print(response_8)
-    print(server.handle_request(False, discover_return_values[1], 'MNOPQ'))
+    print(server.handle_request(True, None, 'MNOPQ'))
+
+    
+    #Orphaned Request Simulation
+    #Client does a request call
+    # - > No previous discover
+    # - > Sends a "True" client response
+    # - > Hard requests an ip that is available
+    print("\nOrphaned Request simulation\n")
+    print(server.handle_request(True, '192.168.1.200', 'WXYZ'))
+
+    #Testing release of IP
+    #Correct MAC Address given
+    print("\nIP Release tests\n")
+    response_9 = server.handle_discover('QWERTY')
+    discover_return_values = re.findall(r"<(.*?)>", response_9)
+    print(response_9)
+    print(server.handle_request(True, discover_return_values[1], 'QWERTY'))
+    print(server.handle_release('QWERTY'))
+
+    #Mismatched MAC Address given
+    print("\nIP Release tests\n")
+    response_10 = server.handle_discover('WASD')
+    discover_return_values = re.findall(r"<(.*?)>", response_10)
+    print(response_10)
+    print(server.handle_request(True, discover_return_values[1], 'WASD'))
+    print(server.handle_release('WADS'))
+    
