@@ -178,7 +178,7 @@ class DHCPServer:
 
         #Connecting the socket to the host ip and port
         try:
-            self.server_socket.bind(self.host_ip, self.listening_port)
+            self.server_socket.bind((self.host_ip, self.listening_port))
             self.server_socket.settimeout(1.0)
             self.server_running = True
             print(f"Server binding to <{self.host_ip}> IP on Port <{self.listening_port}>")
@@ -209,12 +209,12 @@ class DHCPServer:
                         case "DISCOVER":
                             response_message = self.handle_discover(parsed_mac)
                         case "REQUEST":
-                            parsed_response = parsed_message[2] if len(parsed_message > 2) else None
-                            parsed_ip = parsed_message[3] if len(parsed_message > 3) else None
+                            parsed_response = parsed_message[2] if len(parsed_message) > 2 else None
+                            parsed_ip = parsed_message[3] if len(parsed_message) > 3 else None
                             if parsed_response:
                                 response_message = self.handle_request(parsed_response, parsed_ip, parsed_mac)
                         case "RELEASE":
-                            parsed_ip = parsed_message[2] if len(parsed_message > 2) else None
+                            parsed_ip = parsed_message[2] if len(parsed_message) > 2 else None
                             response_message = self.handle_release(parsed_mac)
 
                         case _:
@@ -245,7 +245,7 @@ if __name__ == "__main__":
     def simulate_client(server_ip, server_port, client_mac):
         print("Running simulation")
         client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        client_socket.timeout(2.0)
+        # client_socket.timeout(2.0)
 
         discover_msg = f"DISCOVER, {client_mac}"
         client_socket.sendto(discover_msg.encode('utf-8'), (server_ip, server_port))
@@ -263,7 +263,7 @@ if __name__ == "__main__":
 
         print(f"[Client {client_mac}] <- Received: {returned_data}")
 
-        if not offer_message.startswith("OFFER"):
+        if not returned_data.startswith("OFFER"):
             print("Unexpected return message")
             client_socket.close()
             return
@@ -272,7 +272,7 @@ if __name__ == "__main__":
 
         if offered_ip:
             request_message = f"REQUEST, {client_mac}, {True}, {offered_ip}"
-            client_socket.sendto(request_message.encode('utf-8'))
+            client_socket.sendto(request_message.encode('utf-8'), (server_ip, server_port))
             print("Request sent")
 
             try:
