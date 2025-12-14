@@ -1,8 +1,26 @@
-import re
 import time
 import random
 import threading
 import socket
+
+
+def extract_bracket_values(message):
+    values = []
+    idx = 0
+    while True:
+        start = message.find('<', idx)
+        if start == -1:
+            break
+        end = message.find('>', start + 1)
+        if end == -1:
+            break
+        values.append(message[start + 1:end])
+        idx = end + 1
+    return values
+
+
+def clean_field(value):
+    return value.strip() if isinstance(value, str) else value
 
 # Implement catch for current pending offers
 class DHCPServer:
@@ -81,6 +99,7 @@ class DHCPServer:
     
 
     def handle_discover(self, client_mac):
+        client_mac = clean_field(client_mac)
         ip = self._get_random_ip()
         if ip is None:
             return None
@@ -96,6 +115,8 @@ class DHCPServer:
     
     
     def handle_request(self, client_response, requested_ip, client_mac):
+        requested_ip = clean_field(requested_ip)
+        client_mac = clean_field(client_mac)
         #client_response
         # - > True
         # - - > Reports False
@@ -160,6 +181,7 @@ class DHCPServer:
     # def _clean_up(self):
     
     def handle_release(self, client_mac):
+        client_mac = clean_field(client_mac)
         if client_mac not in self.leases:
             return None
         ip = self.leases[client_mac]['ip']
@@ -204,11 +226,13 @@ class DHCPServer:
                     continue
         
                 client_message = data.decode('utf-8').strip()
-                parsed_message = client_message.split(',')
+                parsed_message = [part.strip() for part in client_message.split(',')]
 
                 #Grabbing the request type
                 message_type = parsed_message[0] if parsed_message else ""
                 parsed_mac = parsed_message[1] if len(parsed_message) > 1 else None
+                message_type = clean_field(message_type)
+                parsed_mac = clean_field(parsed_mac)
 
                 response_message = None
 
@@ -219,10 +243,13 @@ class DHCPServer:
                         case "REQUEST":
                             parsed_response = parsed_message[2] if len(parsed_message) > 2 else None
                             parsed_ip = parsed_message[3] if len(parsed_message) > 3 else None
+                            parsed_response = clean_field(parsed_response)
+                            parsed_ip = clean_field(parsed_ip)
                             if parsed_response:
                                 response_message = self.handle_request(parsed_response, parsed_ip, parsed_mac)
                         case "RELEASE":
                             parsed_ip = parsed_message[2] if len(parsed_message) > 2 else None
+                            parsed_ip = clean_field(parsed_ip)
                             response_message = self.handle_release(parsed_mac)
 
                         case _:
@@ -238,6 +265,19 @@ class DHCPServer:
         finally:
             self.server_socket.close()
             print("[DHCP Server] Server shutdown.")
+
+
+    def stop(self):
+        """Stop the server loop and poke the socket to unblock recvfrom."""
+        self.server_running = False
+        if self.server_socket:
+            try:
+                # Send an empty packet to self to unblock recvfrom
+                end_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                end_sock.sendto(b"", (self.host_ip, self.listening_port))
+                end_sock.close()
+            except Exception:
+                pass
 
 
     def debug_print(self):
@@ -267,7 +307,7 @@ if __name__ == "__main__":
             return
         
         returned_data = data.decode('utf-8').strip()
-        offer_message = re.findall(r"<(.*?)>", returned_data)
+        offer_message = extract_bracket_values(returned_data)
 
         print(f"[Client {client_mac}] <- Received: {returned_data}")
 
@@ -294,7 +334,7 @@ if __name__ == "__main__":
             print(f"[Client {client_mac}] <- Received: {response_message}")
 
             if response_message.startswith("ACK"):
-                parts = re.findall(r"<(.*?)>", response_message)
+                parts = extract_bracket_values(response_message)
                 leased_ip = parts[1] if len(parts) > 2 else offered_ip
                 print(f"[Client {client_mac}] ** Lease acquired: IP {leased_ip} **")
             elif response_message.startswith("NAK"):
@@ -309,105 +349,134 @@ if __name__ == "__main__":
     time.sleep(0.2)
 
     simulate_client("127.0.0.1", 1067, "AA:BB:CC:DD:01")
-    simulate_server.running = False
-
-    try:
-        end_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        end_sock.sendto(b"", ("127.0.0.1", 1067))
-        end_sock.close()
-    except:
-        pass
+    simulate_server.stop()
     sServer_thread.join()
     print("Test complete")
-    server = DHCPServer(ip="192.168.1.0", cidr = "/23")
-    server.run()
 
-    # Testing different ip discover and ip request attempts for differnet MAC Addresses
-    #All test either are fully correct or only 1 variable wrong
+    # Socket-based test helpers
+    def send_message(message, expect_reply=True, timeout=1.0):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.settimeout(timeout)
+        sock.sendto(message.encode('utf-8'), ("127.0.0.1", 1068))
+        try:
+            if expect_reply:
+                data, _ = sock.recvfrom(1024)
+                return data.decode('utf-8').strip()
+        except socket.timeout:
+            return None
+        finally:
+            sock.close()
+        return None
+
+    # Start dedicated server for socket tests on a different port to avoid conflicts
+    test_server = DHCPServer(ip="192.168.1.0", cidr="/23", listening_port=1068)
+    test_thread = threading.Thread(target=test_server.run, daemon=True)
+    test_thread.start()
+    time.sleep(0.2)
+
+    # Testing different ip discover and ip request attempts for different MAC Addresses
+    # All test either are fully correct or only 1 variable wrong
     # Testing a correct call
     # - > Expected ACK Message
+    discover_msg = "DISCOVER, ABCD"
+    offer_resp = send_message(discover_msg)
+    print(offer_resp)
+    offered_ip = extract_bracket_values(offer_resp)[1] if offer_resp else None
+    request_msg = f"REQUEST, ABCD, {True}, {offered_ip}"
+    print(send_message(request_msg))
+
     # Testing a mismatched mac
     # - > Expected NAK Message
+    discover_msg = "DISCOVER, EFGH"
+    offer_resp = send_message(discover_msg)
+    print(offer_resp)
+    offered_ip = extract_bracket_values(offer_resp)[1] if offer_resp else None
+    request_msg = f"REQUEST, EFGZ, {True}, {offered_ip}"
+    print(send_message(request_msg))
+
     # Testing a mismatched ip request
     # - > Expected NAK Message
+    discover_msg = "DISCOVER, IJKL"
+    offer_resp = send_message(discover_msg)
+    print(offer_resp)
+    request_msg = "REQUEST, IJKL, True, 12.96.122.241"
+    print(send_message(request_msg))
+
     # Testing a Deny response
     # - > Expected NAK Message
+    discover_msg = "DISCOVER, MNOP"
+    offer_resp = send_message(discover_msg)
+    print(offer_resp)
+    offered_ip = extract_bracket_values(offer_resp)[1] if offer_resp else None
+    request_msg = f"REQUEST, MNOP, {False}, {offered_ip}"
+    print(send_message(request_msg))
 
-    #All expected
-    response_1 = server.handle_discover('ABCD')
-    discover_return_values = re.findall(r"<(.*?)>", response_1)
-    print(response_1)
-    print(server.handle_request(True, discover_return_values[1], 'ABCD'))
-
-    #MAC Address mismatch
-    response_2 = server.handle_discover('EFGH')
-    discover_return_values = re.findall(r"<(.*?)>", response_2)
-    print(response_2)
-    print(server.handle_request(True, discover_return_values[1], 'EFGZ'))
-
-    #Requested IP Mismatch
-    response_3 = server.handle_discover('IJKL')
-    discover_return_values = re.findall(r"<(.*?)>", response_3)
-    print(response_3)
-    print(server.handle_request(True, '12.96.122.241', 'IJKL'))
-
-    #Deny request attempt
-    response_4 = server.handle_discover('MNOP')
-    discover_return_values = re.findall(r"<(.*?)>", response_4)
-    print(response_4)
-    print(server.handle_request(False, discover_return_values[1], 'MNOP'))
-
-    
     print("\nMulti-Variable failure tests\n")
-    #Testing multipled variables incorrect
-    #Missing client_response
-    response_5 = server.handle_discover('ABCDE')
-    discover_return_values = re.findall(r"<(.*?)>", response_5)
-    print(response_5)
-    print(server.handle_request(None, discover_return_values[1], 'ABCDE'))
+    # Testing multiple variables incorrect
+    # Missing client_response
+    discover_msg = "DISCOVER, ABCDE"
+    offer_resp = send_message(discover_msg)
+    print(offer_resp)
+    offered_ip = extract_bracket_values(offer_resp)[1] if offer_resp else None
+    request_msg = f"REQUEST, ABCDE, , {offered_ip}"
+    print(send_message(request_msg))
 
-    #MAC Address mismatch
-    #Requested IP Mismatch
-    response_6 = server.handle_discover('EFGHI')
-    discover_return_values = re.findall(r"<(.*?)>", response_6)
-    print(response_6)
-    print(server.handle_request(True, '12.96.122.241', 'EFGHZ'))
+    # MAC Address mismatch and Requested IP Mismatch
+    discover_msg = "DISCOVER, EFGHI"
+    offer_resp = send_message(discover_msg)
+    print(offer_resp)
+    request_msg = "REQUEST, EFGHZ, True, 12.96.122.241"
+    print(send_message(request_msg))
 
-    #Missing MAC Address
-    response_7 = server.handle_discover('IJKLM')
-    discover_return_values = re.findall(r"<(.*?)>", response_7)
-    print(response_7)
-    print(server.handle_request(True, '12.96.122.231', 'IJKLM'))
+    # Missing MAC Address
+    discover_msg = "DISCOVER, IJKLM"
+    offer_resp = send_message(discover_msg)
+    print(offer_resp)
+    request_msg = "REQUEST, , True, 12.96.122.231"
+    print(send_message(request_msg))
 
-    #Missing Requested IP 
-    response_8 = server.handle_discover('MNOPQ')
-    discover_return_values = re.findall(r"<(.*?)>", response_8)
-    print(response_8)
-    print(server.handle_request(True, None, 'MNOPQ'))
+    # Missing Requested IP 
+    discover_msg = "DISCOVER, MNOPQ"
+    offer_resp = send_message(discover_msg)
+    print(offer_resp)
+    request_msg = "REQUEST, MNOPQ, True, "
+    print(send_message(request_msg))
 
-    
-    #Orphaned Request Simulation
-    #Client does a request call
+    # Orphaned Request Simulation
+    # Client does a request call
     # - > No previous discover
     # - > Sends a "True" client response
     # - > Hard requests an ip that is available
     print("\nOrphaned Request simulation\n")
-    print(server.handle_request(True, '192.168.1.200', 'WXYZ'))
+    print(send_message("REQUEST, WXYZ, True, 192.168.1.200"))
 
-    #Testing release of IP
-    #Correct MAC Address given
+    # Testing release of IP
+    # Correct MAC Address given
     print("\nIP Release tests\n")
-    response_9 = server.handle_discover('QWERTY')
-    discover_return_values = re.findall(r"<(.*?)>", response_9)
-    print(response_9)
-    print(server.handle_request(True, discover_return_values[1], 'QWERTY'))
-    print(server.handle_release('QWERTY'))
+    discover_msg = "DISCOVER, QWERTY"
+    offer_resp = send_message(discover_msg)
+    print(offer_resp)
+    offered_ip = extract_bracket_values(offer_resp)[1] if offer_resp else None
+    request_msg = f"REQUEST, QWERTY, {True}, {offered_ip}"
+    print(send_message(request_msg))
+    print(send_message("RELEASE, QWERTY, " + (offered_ip or "")))
 
-    #Mismatched MAC Address given
+    # Mismatched MAC Address given
     print("\nIP Release tests\n")
-    response_10 = server.handle_discover('WASD')
-    discover_return_values = re.findall(r"<(.*?)>", response_10)
-    print(response_10)
-    print(server.handle_request(True, discover_return_values[1], 'WASD'))
-    print(server.handle_release('WADS'))
+    discover_msg = "DISCOVER, WASD"
+    offer_resp = send_message(discover_msg)
+    print(offer_resp)
+    offered_ip = extract_bracket_values(offer_resp)[1] if offer_resp else None
+    request_msg = f"REQUEST, WASD, {True}, {offered_ip}"
+    print(send_message(request_msg))
+    print(send_message("RELEASE, WADS, " + (offered_ip or "")))
+
+    test_server.stop()
+    test_thread.join()
+
+    # Set to True to run a manual blocking server session after tests
+    RUN_MANUAL_SERVER = False
+    if RUN_MANUAL_SERVER:
+        server = DHCPServer(ip="192.168.1.0", cidr = "/23")
+        server.run()
     
